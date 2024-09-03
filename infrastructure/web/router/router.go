@@ -2,31 +2,46 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
-	"net/http"
+	"gorm.io/gorm"
+	"test-products-api/domain/repositories"
+	"test-products-api/domain/services"
+	"test-products-api/infrastructure/database/sqlite"
+	"test-products-api/infrastructure/web/controllers"
 )
 
-func NewGinRouter(ctrls *Controllers) *gin.Engine {
-	r := gin.Default()
-
-	r.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "Server is running!"})
-	})
-
-	r.GET("ping", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "Pong!"})
-	})
-
-	// V1 Routes
-	v1Routes(r, ctrls)
-	return r
+type Server struct {
+	router       *gin.Engine
+	db           *gorm.DB
+	repositories *Repositories
+	services     *Services
+	controllers  *Controllers
 }
 
-func v1Routes(r *gin.Engine, ctrls *Controllers) {
-	v1 := r.Group("v1")
-	products := v1.Group("products")
-	products.POST("", ctrls.ProductCtrl.NewProduct)
-	products.GET("", ctrls.ProductCtrl.FindProducts)
-	products.GET(":id", ctrls.ProductCtrl.ProductByID)
-	products.PATCH(":id", ctrls.ProductCtrl.UpdateProduct)
-	products.DELETE(":id", ctrls.ProductCtrl.DeleteProduct)
+type Repositories struct {
+	ProductRepo repositories.Product
+}
+
+type Services struct {
+	ProductServ *services.ProductService
+}
+
+type Controllers struct {
+	ProductCtrl *controllers.ProductController
+}
+
+func NewServer() *Server {
+	s := &Server{}
+	s.db = sqlite.NewSQLDB()
+	s.repositories = &Repositories{ProductRepo: sqlite.NewProductRepository(s.db)}
+	s.services = &Services{ProductServ: services.NewProductService(s.repositories.ProductRepo)}
+	s.controllers = &Controllers{ProductCtrl: controllers.NewProductController(*s.services.ProductServ)}
+	s.router = NewGinRouter(s.controllers)
+	return s
+}
+
+func (s *Server) Run() {
+	err := s.router.Run(":1010")
+	if err != nil {
+		panic(err.Error())
+	}
 }
